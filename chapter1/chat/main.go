@@ -1,12 +1,14 @@
 package main
 
 import (
+	"../trace"
+	"flag"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sync"
 	"text/template"
-	"flag"
 )
 
 type templateHandler struct {
@@ -28,6 +30,7 @@ func main() {
 	flag.Parse()
 
 	r := newRoom()
+	r.tracer = trace.New(os.Stdout)
 	http.Handle("/", &templateHandler{filename: "chat.html"})
 	http.Handle("/room", r)
 
