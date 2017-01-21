@@ -3,18 +3,33 @@ package main
 import (
 	"../../chapter1/trace"
 	"flag"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
 	"text/template"
+
+	"github.com/stretchr/gomniauth"
+	"github.com/stretchr/gomniauth/providers/facebook"
+	"github.com/stretchr/gomniauth/providers/github"
+	"github.com/stretchr/gomniauth/providers/google"
+	"gopkg.in/yaml.v2"
 )
 
 type templateHandler struct {
 	once     sync.Once
 	filename string
 	templ    *template.Template
+}
+
+type Keys struct {
+	SecurityKey   string `yaml:"securityKey"`
+	OauthServices map[string]struct {
+		ClientId  string `yaml:"id"`
+		SecretKey string `yaml:"secret"`
+	} `yaml:"oauthServices"`
 }
 
 func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -31,6 +46,23 @@ func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func main() {
 	var addr = flag.String("addr", ":8080", "アプリケーションのアドレス")
 	flag.Parse()
+
+	buf, err := ioutil.ReadFile(".keys.yaml")
+	if err != nil {
+		log.Fatal("keys.yaml is not found.")
+	}
+	keys := Keys{}
+	err = yaml.Unmarshal(buf, &keys)
+	if err != nil {
+		log.Fatal("error Unmarshal: ", buf)
+	}
+
+	gomniauth.SetSecurityKey(keys.SecurityKey)
+	gomniauth.WithProviders(
+		facebook.New(keys.OauthServices["facebook"].ClientId, keys.OauthServices["facebook"].SecretKey, "http://localhost:8080/auth/callback/facebook"),
+		github.New(keys.OauthServices["github"].ClientId, keys.OauthServices["github"].SecretKey, "http://localhost:8080/auth/callback/github"),
+		google.New(keys.OauthServices["google"].ClientId, keys.OauthServices["google"].SecretKey, "http://localhost:8080/auth/callback/google"),
+	)
 
 	r := newRoom()
 	r.tracer = trace.New(os.Stdout)
