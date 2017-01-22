@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/gomniauth/providers/facebook"
 	"github.com/stretchr/gomniauth/providers/github"
 	"github.com/stretchr/gomniauth/providers/google"
+	"github.com/stretchr/objx"
 	"gopkg.in/yaml.v2"
 )
 
@@ -37,7 +38,16 @@ func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		t.templ =
 			template.Must(template.ParseFiles(filepath.Join("templates", t.filename)))
 	})
-	err := t.templ.Execute(w, r)
+
+	data := map[string]interface{}{
+		"Host": r.Host,
+	}
+	authCookie, err := r.Cookie("auth")
+	if err == nil {
+		data["UserData"] = objx.MustFromBase64(authCookie.Value)
+	}
+
+	err = t.templ.Execute(w, data)
 	if err != nil {
 		log.Fatal("ServeHTTP: ", err)
 	}
