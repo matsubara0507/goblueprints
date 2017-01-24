@@ -15,8 +15,8 @@ type authHandler struct {
 }
 
 func (h *authHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	_, err := r.Cookie("auth")
-	if err == http.ErrNoCookie {
+	cookie, err := r.Cookie("auth")
+	if err == http.ErrNoCookie || cookie.Value == "" {
 		w.Header().Set("Location", "/login")
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	} else if err != nil {
