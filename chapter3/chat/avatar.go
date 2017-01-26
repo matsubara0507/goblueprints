@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"io/ioutil"
 	"path/filepath"
 )
 
@@ -39,19 +38,11 @@ type FileSystemAvatar struct{}
 var UseFileSystemAvatar FileSystemAvatar
 
 func (_ FileSystemAvatar) GetAvatarURL(u ChatUser) (string, error) {
-	files, err := ioutil.ReadDir("avatars")
-	if err == nil {
-		for _, file := range files {
-			if file.IsDir() {
-				continue
-			}
-			match, _ := filepath.Match(u.UniqueID()+".*", file.Name())
-			if match {
-				return "/avatars/" + file.Name(), nil
-			}
-		}
+	matches, err := filepath.Glob(filepath.Join("avatars", u.UniqueID()+".*"))
+	if err != nil || len(matches) == 0 {
+		return "", ErrNoAvatarURL
 	}
-	return "", ErrNoAvatarURL
+	return "/" + filepath.ToSlash(matches[0]), nil
 }
 
 type TryAvatars []Avatar
