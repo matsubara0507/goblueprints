@@ -90,6 +90,8 @@ func main() {
 		w.Header()["Location"] = []string{"/chat"}
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	})
+	http.Handle("/upload", &templateHandler{filename: "upload.html"})
+	http.HandleFunc("/uploader", uploaderHandler)
 
 	go r.run()
 	log.Println("Webサーバーを開始します。ポート: ", *addr)
