@@ -11,20 +11,17 @@ import (
 var ErrNoAvatarURL = errors.New("chat: Unable to get an avatar URL")
 
 type Avatar interface {
-	GetAvatarURL(c *client) (string, error)
+	GetAvatarURL(u ChatUser) (string, error)
 }
 
 type AuthAvatar struct{}
 
 var UseAuthAvatar AuthAvatar
 
-func (_ AuthAvatar) GetAvatarURL(c *client) (string, error) {
-	url, ok := c.userData["avatar_url"]
-	if ok {
-		urlStr, ok := url.(string)
-		if ok {
-			return urlStr, nil
-		}
+func (_ AuthAvatar) GetAvatarURL(u ChatUser) (string, error) {
+	url := u.AvatarURL()
+	if url != "" {
+		return url, nil
 	}
 	return "", ErrNoAvatarURL
 }
@@ -33,37 +30,24 @@ type GravatarAvatar struct{}
 
 var UseGravatar GravatarAvatar
 
-func (_ GravatarAvatar) GetAvatarURL(c *client) (string, error) {
-	userid, ok := c.userData["userid"]
-	if ok {
-		useridStr, ok := userid.(string)
-		if ok {
-			return "//www.gravatar.com/avatar/" + useridStr, nil
-		}
-	}
-	return "", ErrNoAvatarURL
+func (_ GravatarAvatar) GetAvatarURL(u ChatUser) (string, error) {
+	return "//www.gravatar.com/avatar/" + u.UniqueID(), nil
 }
 
 type FileSystemAvatar struct{}
 
 var UseFileSystemAvatar FileSystemAvatar
 
-func (_ FileSystemAvatar) GetAvatarURL(c *client) (string, error) {
-	userid, ok := c.userData["userid"]
-	if ok {
-		useridStr, ok := userid.(string)
-		if ok {
-			files, err := ioutil.ReadDir("avatars")
-			if err == nil {
-				for _, file := range files {
-					if file.IsDir() {
-						continue
-					}
-					match, _ := filepath.Match(useridStr+".*", file.Name())
-					if match {
-						return "/avatars/" + file.Name(), nil
-					}
-				}
+func (_ FileSystemAvatar) GetAvatarURL(u ChatUser) (string, error) {
+	files, err := ioutil.ReadDir("avatars")
+	if err == nil {
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
+			match, _ := filepath.Match(u.UniqueID()+".*", file.Name())
+			if match {
+				return "/avatars/" + file.Name(), nil
 			}
 		}
 	}

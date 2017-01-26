@@ -18,13 +18,12 @@ type room struct {
 	avatar  Avatar
 }
 
-func newRoom(avatar Avatar) *room {
+func newRoom() *room {
 	return &room{
 		forward: make(chan *message),
 		join:    make(chan *client),
 		leave:   make(chan *client),
 		clients: make(map[*client]bool),
-		avatar:  avatar,
 	}
 }
 
