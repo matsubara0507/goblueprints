@@ -74,7 +74,7 @@ func main() {
 		google.New(keys.OauthServices["google"].ClientId, keys.OauthServices["google"].SecretKey, "http://localhost:8080/auth/callback/google"),
 	)
 
-	r := newRoom(UseGravatar)
+	r := newRoom(UseFileSystemAvatar)
 	r.tracer = trace.New(os.Stdout)
 	http.Handle("/chat", MustAuth(&templateHandler{filename: "chat.html"}))
 	http.Handle("/login", &templateHandler{filename: "login.html"})
@@ -92,6 +92,8 @@ func main() {
 	})
 	http.Handle("/upload", &templateHandler{filename: "upload.html"})
 	http.HandleFunc("/uploader", uploaderHandler)
+	http.Handle("/avatars/",
+		http.StripPrefix("/avatars/", http.FileServer(http.Dir("./avatars"))))
 
 	go r.run()
 	log.Println("Webサーバーを開始します。ポート: ", *addr)
