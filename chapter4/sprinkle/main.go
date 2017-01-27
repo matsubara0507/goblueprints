@@ -41,4 +41,9 @@ func main() {
 		t := config.Transforms[rand.Intn(len(config.Transforms))]
 		fmt.Println(strings.Replace(t, config.OtherWord, s.Text(), -1))
 	}
+
+	err = s.Err()
+	if err != nil {
+		log.Fatal("error: ", err)
+	}
 }
