@@ -3,15 +3,19 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"time"
 )
 
-const (
-	duplicateVowel bool = true
-	removeVowel    bool = false
-)
+func duplicateVowel(word []byte, i int) []byte {
+	return append(word[:i+1], word[i:]...)
+}
+
+func removeVowel(word []byte, i int) []byte {
+	return append(word[:i], word[i+1:]...)
+}
 
 func randBool() bool {
 	return rand.Intn(2) == 0
@@ -33,14 +37,18 @@ func main() {
 				}
 			}
 			if vI >= 0 {
-				switch randBool() {
-				case duplicateVowel:
-					word = append(word[:vI+1], word[vI:]...)
-				case removeVowel:
-					word = append(word[:vI], word[vI+1:]...)
+				if randBool() {
+					word = duplicateVowel(word, vI)
+				} else {
+					word = removeVowel(word, vI)
 				}
 			}
 		}
 		fmt.Println(string(word))
+	}
+
+	err := s.Err()
+	if err != nil {
+		log.Fatal("error: ", err)
 	}
 }
