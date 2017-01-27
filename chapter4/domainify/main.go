@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"strings"
@@ -16,8 +18,11 @@ const allowedChars = "abcdefghijklmnopqrstuvwxyz0123456789_-"
 
 func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
-	s := bufio.NewScanner(os.Stdin)
 
+	var tdl = flag.String("tdl", tlds[rand.Intn(len(tlds))], "トップレベルドメイン")
+	flag.Parse()
+
+	s := bufio.NewScanner(os.Stdin)
 	for s.Scan() {
 		text := strings.ToLower(s.Text())
 		var newText []rune
@@ -29,6 +34,11 @@ func main() {
 				newText = append(newText, r)
 			}
 		}
-		fmt.Println(string(newText) + "." + tlds[rand.Intn(len(tlds))])
+		fmt.Println(string(newText) + "." + *tdl)
+	}
+
+	err := s.Err()
+	if err != nil {
+		log.Fatal("error: ", err)
 	}
 }
