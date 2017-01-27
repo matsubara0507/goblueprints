@@ -27,16 +27,15 @@ func main() {
 	for s.Scan() {
 		word := []byte(s.Text())
 		if randBool() {
-			var vI int = -1
+			var vowelIndexes []int
 			for i, char := range word {
 				switch char {
 				case 'a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U':
-					if randBool() {
-						vI = i
-					}
+					vowelIndexes = append(vowelIndexes, i)
 				}
 			}
-			if vI >= 0 {
+			if len(vowelIndexes) > 0 {
+				vI := vowelIndexes[rand.Intn(len(vowelIndexes))]
 				if randBool() {
 					word = duplicateVowel(word, vI)
 				} else {
