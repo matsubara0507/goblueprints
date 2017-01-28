@@ -1,0 +1,12 @@
+otherWord: "*"
+transforms:
+  - "*"
+  - "*"
+  - "*"
+  - "*"
+  - "*app"
+  - "*site"
+  - "*time"
+  - "get*"
+  - "go*"
+  - "lets *"
