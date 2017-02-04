@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -17,32 +16,6 @@ import (
 	"github.com/garyburd/go-oauth/oauth"
 	"github.com/joeshaw/envdecode"
 )
-
-var conn net.Conn
-
-func dial(netw, addr string) (net.Conn, error) {
-	if conn != nil {
-		conn.Close()
-		conn = nil
-	}
-	netc, err := net.DialTimeout(netw, addr, 5*time.Second)
-	if err != nil {
-		return nil, err
-	}
-	conn = netc
-	return netc, nil
-}
-
-var reader io.ReadCloser
-
-func closeConn() {
-	if conn != nil {
-		conn.Close()
-	}
-	if reader != nil {
-		reader.Close()
-	}
-}
 
 var (
 	authClient *oauth.Client
@@ -74,7 +47,6 @@ func setupTwitterAuth() {
 
 var (
 	authSetupOnce sync.Once
-	httpClient    *http.Client
 )
 
 func makeRequest(query url.Values) (*http.Request, error) {
