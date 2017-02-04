@@ -1,12 +1,11 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
-	"time"
 
 	nsq "github.com/nsqio/go-nsq"
 
@@ -42,37 +41,24 @@ func loadOptions() ([]string, error) {
 	return options, iter.Err()
 }
 
-func publishVotes(votes <-chan string) <-chan struct{} {
-	stopchan := make(chan struct{}, 1)
+func publishVotes(votes <-chan string) {
 	pub, _ := nsq.NewProducer("localhost:4150", nsq.NewConfig())
-	go func() {
-		for vote := range votes {
-			pub.Publish("votes", []byte(vote))
-		}
-		log.Println("Publisher: 停止中です")
-		pub.Stop()
-		log.Println("Publisher: 停止しました")
-		stopchan <- struct{}{}
-	}()
-	return stopchan
+	for vote := range votes {
+		pub.Publish("votes", []byte(vote))
+	}
+	log.Println("Publisher: 停止中です")
+	pub.Stop()
+	log.Println("Publisher: 停止しました")
 }
 
 func main() {
-	var stoplock sync.Mutex
-	stop := false
-	stopChan := make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(context.Background())
 	signalChan := make(chan os.Signal, 1)
-
 	go func() {
 		<-signalChan
-		stoplock.Lock()
-		stop = true
-		stoplock.Unlock()
+		cancel()
 		log.Println("停止します...")
-		stopChan <- struct{}{}
-		closeConn()
 	}()
-
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 	err := dialdb()
@@ -81,22 +67,8 @@ func main() {
 	}
 	defer closedb()
 
+	// Start Processes
 	votes := make(chan string)
-	publisherStoppedChan := publishVotes(votes)
-	twitterStoppedChan := startTwitterStream(stopChan, votes)
-	go func() {
-		for {
-			time.Sleep(1 * time.Minute)
-			closeConn()
-			stoplock.Lock()
-			if stop {
-				stoplock.Unlock()
-				break
-			}
-			stoplock.Unlock()
-		}
-	}()
-	<-twitterStoppedChan
-	close(votes)
-	<-publisherStoppedChan
+	go twitterStream(ctx, votes)
+	publishVotes(votes)
 }

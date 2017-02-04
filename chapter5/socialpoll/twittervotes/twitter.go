@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log"
@@ -75,90 +77,110 @@ var (
 	httpClient    *http.Client
 )
 
-func makeRequest(req *http.Request, params url.Values) (*http.Response, error) {
+func makeRequest(query url.Values) (*http.Request, error) {
 	authSetupOnce.Do(func() {
 		setupTwitterAuth()
-		httpClient = &http.Client{
-			Transport: &http.Transport{
-				Dial: dial,
-			},
-		}
 	})
-	formEnc := params.Encode()
+	const endpoint = "https://stream.twitter.com/1.1/statuses/filter.json"
+	req, err :=
+		http.NewRequest("POST", endpoint, strings.NewReader(query.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	formEnc := query.Encode()
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Content-Length", strconv.Itoa(len(formEnc)))
-	req.Header.Set("Authorization",
-		authClient.AuthorizationHeader(creds, "POST", req.URL, params))
-	return httpClient.Do(req)
+	ah := authClient.AuthorizationHeader(creds, "POST", req.URL, query)
+	req.Header.Set("Authorization", ah)
+	return req, nil
 }
 
 type tweet struct {
 	Text string
 }
 
-func readFromTwitter(votes chan<- string) {
+func readFromTwitter(ctx context.Context, votes chan<- string) {
 	options, err := loadOptions()
 	if err != nil {
 		log.Println("選択肢の読み込みに失敗しました: ", err)
 		return
 	}
 
-	u, err := url.Parse("https://stream.twitter.com/1.1/statuses/filter.json")
-	if err != nil {
-		log.Println("URL の解析に失敗しました: ", err)
-		return
-	}
-
 	query := make(url.Values)
 	query.Set("track", strings.Join(options, ","))
-	req, err :=
-		http.NewRequest("POST", u.String(), strings.NewReader(query.Encode()))
+	req, err := makeRequest(query)
 	if err != nil {
 		log.Println("検索のリクエストの作成に失敗しました: ", err)
 		return
 	}
 
-	resp, err := makeRequest(req, query)
+	client := &http.Client{}
+	deadline, ok := ctx.Deadline()
+	if ok {
+		client.Timeout = deadline.Sub(time.Now())
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Println("検索のリクエストに失敗しました: ", err)
 		return
 	}
 
-	reader = resp.Body
-	decoder := json.NewDecoder(reader)
-	for {
-		var tweet tweet
-		err = decoder.Decode(&tweet)
-		if err != nil {
-			break
-		}
-		for _, option := range options {
-			if strings.Contains(strings.ToLower(tweet.Text), strings.ToLower(option)) {
-				log.Println("投票: ", option)
-				votes <- option
-			}
-		}
-	}
-}
+	done := make(chan struct{})
+	defer func() { <-done }()
 
-func startTwitterStream(stopchan <-chan struct{}, votes chan<- string) <-chan struct{} {
-	stoppedchan := make(chan struct{}, 1)
+	defer resp.Body.Close()
 	go func() {
-		defer func() {
-			stoppedchan <- struct{}{}
-		}()
+		defer close(done)
+		log.Println("resp: ", resp.StatusCode)
+		if resp.StatusCode != 200 {
+			var buf bytes.Buffer
+			io.Copy(&buf, resp.Body)
+			log.Println("resp body: %s", buf.String())
+			return
+		}
+		decoder := json.NewDecoder(resp.Body)
 		for {
-			select {
-			case <-stopchan:
-				log.Println("Twitter への問い合わせを終了します...")
-				return
-			default:
-				log.Println("Twitter に問い合わせます...")
-				readFromTwitter(votes)
-				log.Println(" (待機中)")
-				time.Sleep(10 * time.Second)
+			var tweet tweet
+			err = decoder.Decode(&tweet)
+			if err != nil {
+				break
+			}
+			log.Println("tweet: ", tweet)
+			for _, option := range options {
+				if strings.Contains(strings.ToLower(tweet.Text), strings.ToLower(option)) {
+					log.Println("投票: ", option)
+					votes <- option
+				}
 			}
 		}
 	}()
-	return stoppedchan
+
+	select {
+	case <-ctx.Done():
+	case <-done:
+	}
+	return
+}
+
+func readFromTwitterWithTimeout(
+	ctx context.Context, timeout time.Duration, votes chan<- string) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	readFromTwitter(ctx, votes)
+}
+
+func twitterStream(ctx context.Context, votes chan<- string) {
+	defer close(votes)
+	for {
+		log.Println("Twitter に問い合わせます...")
+		readFromTwitterWithTimeout(ctx, 1*time.Minute, votes)
+		log.Println(" (待機中)")
+		select {
+		case <-ctx.Done():
+			log.Println("Twitter への問い合わせを終了します...")
+			return
+		case <-time.After(10 * time.Second):
+		}
+	}
 }
