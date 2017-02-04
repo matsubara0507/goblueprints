@@ -1,8 +1,6 @@
 package main
 
 import (
-	"flag"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -15,28 +13,20 @@ import (
 	"gopkg.in/mgo.v2/bson"
 )
 
-var fatalErr error
-
-func fatal(e error) {
-	fmt.Println(e)
-	flag.PrintDefaults()
-	fatalErr = e
-}
-
 const updateDuration = 1 * time.Second
 
 func main() {
-	defer func() {
-		if fatalErr != nil {
-			os.Exit(1)
-		}
-	}()
+	err := counterMain()
+	if err != nil {
+		log.Fatal(err)
+	}
+}
 
+func counterMain() error {
 	log.Println("データベースに接続しています...")
 	db, err := mgo.Dial("localhost")
 	if err != nil {
-		fatal(err)
-		return
+		return err
 	}
 	defer func() {
 		log.Println("データベース接続を閉じます...")
@@ -50,8 +40,7 @@ func main() {
 	log.Println("NSQ に接続します...")
 	q, err := nsq.NewConsumer("votes", "counter", nsq.NewConfig())
 	if err != nil {
-		fatal(err)
-		return
+		return err
 	}
 
 	q.AddHandler(nsq.HandlerFunc(func(m *nsq.Message) error {
@@ -67,49 +56,51 @@ func main() {
 
 	err = q.ConnectToNSQLookupd("localhost:4161")
 	if err != nil {
-		fatal(err)
-		return
+		return err
 	}
 
 	log.Println("NSQ 上での投票を待機します...")
-	var updater *time.Timer
-	updater = time.AfterFunc(updateDuration, func() {
+	ticker := time.NewTicker(updateDuration)
+	defer ticker.Stop()
+
+	update := func() {
 		countsLock.Lock()
 		defer countsLock.Unlock()
 		if len(counts) == 0 {
 			log.Println("新しい投票はありません。データベースの更新をスキップします")
-		} else {
-			log.Println("データベースを更新します")
-			log.Println(counts)
-			ok := true
-			for option, count := range counts {
-				sel := bson.M{"options": bson.M{"$in": []string{option}}}
-				up := bson.M{"$inc": bson.M{"result" + option: count}}
-				_, err := pollData.UpdateAll(sel, up)
-				if err != nil {
-					log.Println("更新に失敗しました: ", err)
-					ok = false
-					continue
-				}
+			return
+		}
+		log.Println("データベースを更新します...")
+		log.Println(counts)
+		ok := true
+		for option, count := range counts {
+			sel := bson.M{"options": bson.M{"$in": []string{option}}}
+			up := bson.M{"$inc": bson.M{"result" + option: count}}
+			_, err := pollData.UpdateAll(sel, up)
+			if err != nil {
+				log.Println("更新に失敗しました: ", err)
+				ok = false
+			} else {
 				counts[option] = 0
 			}
-			if ok {
-				log.Println("データベースの更新が完了しました")
-				counts = nil
-			}
 		}
-		updater.Reset(updateDuration)
-	})
+		if ok {
+			log.Println("データベースの更新が完了しました")
+			counts = nil
+		}
+	}
 
 	termChan := make(chan os.Signal, 1)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+
 	for {
 		select {
+		case <-ticker.C:
+			update()
 		case <-termChan:
-			updater.Stop()
 			q.Stop()
 		case <-q.StopChan:
-			return
+			return nil
 		}
 	}
 }
